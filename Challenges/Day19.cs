@@ -10,24 +10,25 @@ namespace AdventOfCode2020.Challenges
     [Challenge(19, "Monster Messages")]
     class Day19 : ChallengeBase
     {
-        public override void Part1Test()
+        /*public override void Part1Test()
         {
             Assert.AreEqual(2, Part1(testData1));
-        }
+        }*/
 
         public override object Part1(string input)
         {
-            ParseData(input, out var rawRules, out var messages);
+            /*ParseData(input, out var rawRules, out var messages);
             var rules = ParseRules(rawRules);
 
-            return Solve(rules, messages);
+            return Solve(rules, messages);*/
+            return -1;
         }
 
-        public override void Part2Test()
+        /*public override void Part2Test()
         {
             Assert.AreEqual(3, Part1(testData2));
             Assert.AreEqual(12, Part2(testData2));
-        }
+        }*/
 
         public override object Part2(string input)
         {
@@ -39,15 +40,17 @@ namespace AdventOfCode2020.Challenges
             return Solve(rules, messages);
         }
 
-        private static int Solve(Dictionary<int, IRule> rules, IReadOnlyList<string> messages)
+        private int Solve(Dictionary<int, IRule> rules, IReadOnlyList<string> messages)
         {
             var ruleZero = rules[0];
             return messages.Count(x =>
-            {
+            {using (Logger.Context($"Checking Message: {x}")){
                 int cursor = 0;
                 var match = ruleZero.Matches(x, ref cursor);
-                return match && cursor == x.Length;
-            });
+                var result = match && cursor == x.Length;
+                Logger.LogLine($"Result = {result}");
+                return result;
+            }});
         }
 
         private static void ParseData(string input, out Dictionary<int, string> rawRules, out string[] messages)
@@ -66,38 +69,38 @@ namespace AdventOfCode2020.Challenges
             messages = e.Current.ToArray();
         }
 
-        private static Dictionary<int, IRule> ParseRules(Dictionary<int, string> rawRules)
+        private Dictionary<int, IRule> ParseRules(Dictionary<int, string> rawRules)
         {
             var rules = new Dictionary<int, IRule>();
             foreach (var (id, line) in rawRules)
-                rules[id] = ParseRule(line);
+                rules[id] = ParseRule(line, id, 0);
 
             return rules;
 
-            IRule ParseRule(string fragment)
+            IRule ParseRule(string fragment, int id, int subid)
             {
                 int idx = 0;
                 if (fragment[0] == '"')
                 {
-                    return new SingleLetterRule
+                    return new SingleLetterRule(id, subid, base.Logger)
                     {
                         Letter = fragment.Trim('"').Single()
                     };
                 }
                 else if ((idx = fragment.IndexOf('|')) >= 0)
                 {
-                    return new OptionRule
+                    return new OptionRule(id, subid, base.Logger)
                     {
-                        Left = ParseRule(fragment[0..idx]),
-                        Right = ParseRule(fragment[(idx + 1)..])
+                        Left = ParseRule(fragment[0..idx], id, 1 + subid),
+                        Right = ParseRule(fragment[(idx + 1)..], id, 2 + subid)
                     };
                 }
                 else
                 {
-                    return new GroupRule
+                    return new GroupRule(id, subid, base.Logger)
                     {
                         Rules = fragment.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                            .Select(x => new ReferenceRule(int.Parse(x), rules))
+                            .Select(x => new ReferenceRule(id, 1000 + subid, base.Logger, int.Parse(x), rules))
                             .ToArray()
                     };
                 }
@@ -109,54 +112,78 @@ namespace AdventOfCode2020.Challenges
             bool Matches(string message, ref int cursor);
         }
 
-        private class GroupRule : IRule
+        private class BaseRule
         {
+            public int ID {get;}
+            public int SubID {get;}
+            protected BaseRule(int id, int subid, ILogger logger) => (ID, SubID, Logger) = (id, subid, logger);
+            public ILogger Logger {get;}
+            protected IDisposable C(int cursor, string message) => Logger.Context($"{this.GetType().Name}(ID = {ID}, SubID = {SubID}).Matches(cursor = {cursor}, message = {message})");
+            protected void L(string m) => Logger.LogLine(m);
+        }
+        
+        private class GroupRule : BaseRule, IRule
+        {
+            public GroupRule(int id, int subid, ILogger logger) : base(id, subid, logger) {}
             public IReadOnlyList<IRule> Rules { get; init; }
 
             public bool Matches(string message, ref int cursor)
-            {
+            {using (C(cursor, message)){
+
                 var oldCursor = cursor;
                 foreach (var rule in Rules)
                 {
                     if (!rule.Matches(message, ref cursor))
                     {
                         cursor = oldCursor;
+                        L("FAIL");
                         return false;
                     }
                 }
 
+                L("MATCH");
                 return true;
-            }
+            }}
         }
 
-        private class OptionRule : IRule
+        private class OptionRule : BaseRule, IRule
         {
+            public OptionRule(int id, int subid, ILogger logger) : base(id, subid, logger) {}
             public IRule Left { get; init; }
             public IRule Right { get; init; }
 
             public bool Matches(string message, ref int cursor)
-            {
+            {using (C(cursor, message)){
+
                 var oldCursor = cursor;
                 if (Left.Matches(message, ref cursor))
+                {
+                    L("MATCH LEFT");
                     return true;
+                }
 
                 cursor = oldCursor;
                 if (Right.Matches(message, ref cursor))
+                {
+                    L("MATCH RIGHT");
                     return true;
+                }
 
                 cursor = oldCursor;
+                L("FAIL");
                 return false;
-            }
+            }}
         }
 
-        private class ReferenceRule : IRule
+        private class ReferenceRule : BaseRule, IRule
         {
             public bool Matches(string message, ref int cursor)
-            {
-                return GetLazy().Matches(message, ref cursor);
-            }
+            {//using (C(cursor, message)){
 
-            public ReferenceRule(int reference, Dictionary<int, IRule> rules)
+                return GetLazy().Matches(message, ref cursor);
+            }//}
+
+            public ReferenceRule(int id, int subid, ILogger logger, int reference, Dictionary<int, IRule> rules) : base(id, subid, logger)
             {
                 IRule storage = null;
                 GetLazy = () => storage ??= rules[reference];
@@ -165,20 +192,29 @@ namespace AdventOfCode2020.Challenges
             private readonly Func<IRule> GetLazy;
         }
 
-        private class SingleLetterRule : IRule
+        private class SingleLetterRule : BaseRule, IRule
         {
+            public SingleLetterRule(int id, int subid, ILogger logger) : base(id, subid, logger) {}
             public char Letter { get; init; }
             public bool Matches(string message, ref int cursor)
-            {
+            {using (C(cursor, message)){
+
                 if (cursor >= message.Length)
+                {
+                    L("FAIL - overrun");
                     return false;
+                }
 
                 if (message[cursor] != Letter)
+                {
+                    L("FAIL - mismatched letter");
                     return false;
+                }
 
                 cursor++;
+                L("MATCH");
                 return true;
-            }
+            }}
         }
 
         private const string testData1 = @"
