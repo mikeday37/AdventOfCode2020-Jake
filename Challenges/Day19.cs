@@ -29,6 +29,10 @@ namespace AdventOfCode2020.Challenges
             Assert.AreEqual(12, Part2(testData2));
         }
 
+        private const int maxKludgeGreed = 30;
+        private static int kludgeGreed = -1;
+        private static IRule kludgeRule8 = null;
+
         public override object Part2(string input)
         {
             ParseData(input, out var rawRules, out var messages);
@@ -36,6 +40,7 @@ namespace AdventOfCode2020.Challenges
             rawRules[11] = "42 31 | 42 11 31";
 
             var rules = ParseRules(rawRules);
+            kludgeRule8 = rules[8];
             return Solve(rules, messages);
         }
 
@@ -44,9 +49,16 @@ namespace AdventOfCode2020.Challenges
             var ruleZero = rules[0];
             return messages.Count(x =>
             {
-                int cursor = 0;
-                var match = ruleZero.Matches(x, ref cursor);
-                return match && cursor == x.Length;
+                bool result = false;
+                foreach (var greed in Enumerable.Range(1, maxKludgeGreed))
+                {
+                    kludgeGreed = greed;
+                    int cursor = 0;
+                    var match = ruleZero.Matches(x, ref cursor);
+                    result =  match && cursor == x.Length;
+                    if (result) break;
+                }
+                return result;
             });
         }
 
@@ -136,8 +148,10 @@ namespace AdventOfCode2020.Challenges
 
             public bool Matches(string message, ref int cursor)
             {
+                var skipLeft = object.ReferenceEquals(this, kludgeRule8) && kludgeGreed >= 0 && --kludgeGreed > 0; // :face_vomiting:
+
                 var oldCursor = cursor;
-                if (Left.Matches(message, ref cursor))
+                if (!skipLeft && Left.Matches(message, ref cursor))
                     return true;
 
                 cursor = oldCursor;
