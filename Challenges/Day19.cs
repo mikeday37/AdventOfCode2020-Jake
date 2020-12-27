@@ -17,10 +17,10 @@ namespace AdventOfCode2020.Challenges
 
         public override object Part1(string input)
         {
-            /*ParseData(input, out var rawRules, out var messages);
+            ParseData(input, out var rawRules, out var messages);
             var rules = ParseRules(rawRules);
 
-            return Solve(rules, messages);*/
+            return Solve(rules, messages);
             return -1;
         }
 
@@ -40,14 +40,25 @@ namespace AdventOfCode2020.Challenges
             return Solve(rules, messages);
         }
 
+        private static int rule8greedKludge = -1;
+
         private int Solve(Dictionary<int, IRule> rules, IReadOnlyList<string> messages)
         {
+            const int maxGreed = 20;
+
             var ruleZero = rules[0];
             return messages.Count(x =>
             {using (Logger.Context($"Checking Message: {x}")){
                 int cursor = 0;
-                var match = ruleZero.Matches(x, ref cursor);
-                var result = match && cursor == x.Length;
+                bool result = false;
+                foreach (var greed in Enumerable.Range(1, maxGreed))
+                {
+                    rule8greedKludge = greed;
+                    var match = ruleZero.Matches(x, ref cursor);
+                    result = match && cursor == x.Length;
+                    if (result)
+                        break;
+                }
                 Logger.LogLine($"Result = {result}");
                 return result;
             }});
@@ -155,8 +166,11 @@ namespace AdventOfCode2020.Challenges
             public bool Matches(string message, ref int cursor)
             {using (C(cursor, message)){
 
+                var skipLeft = 8 == ID && 0 == SubID && rule8greedKludge >= 0 && --rule8greedKludge > 0; // :face_vomiting:
+                if (skipLeft) L($"Skipping Left: greed = {rule8greedKludge}");
+
                 var oldCursor = cursor;
-                if (Left.Matches(message, ref cursor))
+                if (!skipLeft && Left.Matches(message, ref cursor))
                 {
                     L("MATCH LEFT");
                     return true;
